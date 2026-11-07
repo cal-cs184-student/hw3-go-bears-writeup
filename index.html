@@ -118,10 +118,6 @@
 
 		<p><b>Splitting heuristic.</b> We split at the middle of the node's bounding box along its longest axis (the spatial median), and we decide on which side a primitive goes with the centroid of its own bounding box. Splitting along the longest axis gives children that are closer to cubes than thin slabs, so their boxes are small and a ray is less likely to hit both. The midpoint is cheap to compute (it is <code>bbox.centroid()</code>, so we do not need to sort), and the build takes only a few milliseconds even for CBlucy.dae (0.09 s for 133,796 triangles). This heuristic has one failure case: if all the centroids are on the same side of the midpoint (for example when many primitives have almost the same centroid), one child is empty and the recursion would never end. In that case we split at the middle of the range instead (<code>start + n / 2</code>). Both children then have about half of the primitives, so the range always gets smaller and the recursion stops.</p>
 
-		<p><b>Ray–box intersection.</b> <code>BBox::intersect</code> uses the slab method. For each axis, the box is the region between two parallel planes, and the ray enters and leaves it at \(t = (min - o)/d\) and \(t = (max - o)/d\) (we swap the two if \(d\) is negative). The ray is inside the box between the largest entry time and the smallest exit time over the three axes, also limited to [<code>min_t</code>, <code>max_t</code>]. If this interval is empty, the ray misses the box. When \(d = 0\) on an axis, the ray is parallel to the slab, so it hits only if its origin is between the two planes.</p>
-
-		<p><b>Traversal.</b> <code>BVHAccel::intersect</code> first tests the ray against the box of the node and returns false if it misses. In a leaf, it tests all the primitives. In an inner node, it recurses into <i>both</i> children, because the first hit found is not always the closest one. Since each primitive hit sets <code>max_t</code> to its \(t\) (Part 1), the final <code>Intersection</code> is the closest hit, and later boxes that are farther than the current hit are skipped by the box test. <code>has_intersection</code> (used for shadow rays) can stop at the first hit, because it only needs to know if something is in the way.</p>
-
 		<h3>Normal shading on large .dae files</h3>
 		<div style="display: flex; flex-direction: column; align-items: center;">
 			<table style="width: 100%; text-align: center; border-collapse: collapse;">
@@ -131,16 +127,19 @@
 				  <figcaption>CBlucy.dae (133,796 triangles): 0.08 s with BVH.</figcaption>
 				</td>
 				<td style="text-align: center;">
-				  <img src="assets/p2_maxplanck.png" style="width: 95%; max-width: 480px;"/>
-				  <figcaption>maxplanck.dae (50,801 triangles): 0.06 s with BVH.</figcaption>
+				  <img src="assets/p2_blob.png" style="width: 95%; max-width: 480px;"/>
+				  <figcaption>blob.dae (196,608 triangles): 0.08 s with BVH.</figcaption>
 				</td>
 			  </tr>
 			  <tr>
 				<td style="text-align: center;">
-				  <img src="assets/p2_beetle.png" style="width: 95%; max-width: 480px;"/>
-				  <figcaption>beetle.dae (7,558 triangles): 0.04 s with BVH.</figcaption>
+				  <img src="assets/p2_dragon.png" style="width: 95%; max-width: 480px;"/>
+				  <figcaption>dragon.dae (105,120 triangles): 0.05 s with BVH.</figcaption>
 				</td>
-				<td></td>
+				<td style="text-align: center;">
+				  <img src="assets/p2_wall-e.png" style="width: 95%; max-width: 480px;"/>
+				  <figcaption>wall-e.dae (240,326 triangles): 0.09 s with BVH.</figcaption>
+				</td>
 			  </tr>
 			</table>
 		</div>
