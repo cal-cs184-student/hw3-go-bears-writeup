@@ -102,7 +102,69 @@
 		</ul>
 
 		<h2>Part 2: Bounding Volume Hierarchy</h2>
-		Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+
+		<h3>Walk through our BVH construction algorithm</h3>
+		<p>Without acceleration, every ray is tested against every primitive, so the cost of a ray grows linearly with the number of triangles. A bounding volume hierarchy (BVH) is a binary tree of axis-aligned boxes. Each node stores the bounding box of all the primitives under it, and only the leaves store primitives. If a ray misses the box of a node, it cannot hit anything inside it, so we skip the whole subtree with a single box test.</p>
+
+		<p><code>BVHAccel::construct_bvh(start, end, max_leaf_size)</code> builds the tree recursively on the range [<code>start</code>, <code>end</code>) of the primitive vector:</p>
+		<ol>
+			<li>We loop over the primitives of the range and expand a <code>BBox</code> with the bounding box of each one. We create a new <code>BVHNode</code> with this box.</li>
+			<li>If the range has at most <code>max_leaf_size</code> primitives (4 by default), the node is a leaf. We store <code>start</code> and <code>end</code> in it and return it.</li>
+			<li>Otherwise we choose the split axis: the axis (x, y or z) along which the box has the largest <code>extent</code>.</li>
+			<li>We choose the split point (see the heuristic below) and reorder the range with <code>std::partition</code>. The primitives whose bounding box centroid is below the split point go to the front of the range, and the other ones go to the back. <code>std::partition</code> returns an iterator to the first primitive of the second group.</li>
+			<li>We call <code>construct_bvh</code> on [<code>start</code>, <code>split</code>) for the left child and on [<code>split</code>, <code>end</code>) for the right child.</li>
+		</ol>
+		<p>Because we reorder the primitives in place, each leaf is just a sub-range of the same vector, and we never copy primitives into new vectors.</p>
+
+		<p><b>Splitting heuristic.</b> We split at the middle of the node's bounding box along its longest axis (the spatial median), and we decide on which side a primitive goes with the centroid of its own bounding box. Splitting along the longest axis gives children that are closer to cubes than thin slabs, so their boxes are small and a ray is less likely to hit both. The midpoint is cheap to compute (it is <code>bbox.centroid()</code>, so we do not need to sort), and the build takes only a few milliseconds even for CBlucy.dae (0.09 s for 133,796 triangles). This heuristic has one failure case: if all the centroids are on the same side of the midpoint (for example when many primitives have almost the same centroid), one child is empty and the recursion would never end. In that case we split at the middle of the range instead (<code>start + n / 2</code>). Both children then have about half of the primitives, so the range always gets smaller and the recursion stops.</p>
+
+		<p><b>Ray–box intersection.</b> <code>BBox::intersect</code> uses the slab method. For each axis, the box is the region between two parallel planes, and the ray enters and leaves it at \(t = (min - o)/d\) and \(t = (max - o)/d\) (we swap the two if \(d\) is negative). The ray is inside the box between the largest entry time and the smallest exit time over the three axes, also limited to [<code>min_t</code>, <code>max_t</code>]. If this interval is empty, the ray misses the box. When \(d = 0\) on an axis, the ray is parallel to the slab, so it hits only if its origin is between the two planes.</p>
+
+		<p><b>Traversal.</b> <code>BVHAccel::intersect</code> first tests the ray against the box of the node and returns false if it misses. In a leaf, it tests all the primitives. In an inner node, it recurses into <i>both</i> children, because the first hit found is not always the closest one. Since each primitive hit sets <code>max_t</code> to its \(t\) (Part 1), the final <code>Intersection</code> is the closest hit, and later boxes that are farther than the current hit are skipped by the box test. <code>has_intersection</code> (used for shadow rays) can stop at the first hit, because it only needs to know if something is in the way.</p>
+
+		<h3>Normal shading on large .dae files</h3>
+		<div style="display: flex; flex-direction: column; align-items: center;">
+			<table style="width: 100%; text-align: center; border-collapse: collapse;">
+			  <tr>
+				<td style="text-align: center;">
+				  <img src="assets/p2_cblucy.png" style="width: 95%; max-width: 480px;"/>
+				  <figcaption>CBlucy.dae (133,796 triangles): 0.08 s with BVH.</figcaption>
+				</td>
+				<td style="text-align: center;">
+				  <img src="assets/p2_maxplanck.png" style="width: 95%; max-width: 480px;"/>
+				  <figcaption>maxplanck.dae (50,801 triangles): 0.06 s with BVH.</figcaption>
+				</td>
+			  </tr>
+			  <tr>
+				<td style="text-align: center;">
+				  <img src="assets/p2_beetle.png" style="width: 95%; max-width: 480px;"/>
+				  <figcaption>beetle.dae (7,558 triangles): 0.04 s with BVH.</figcaption>
+				</td>
+				<td></td>
+			  </tr>
+			</table>
+		</div>
+
+		<h3>Rendering times with and without BVH acceleration</h3>
+		<p>All times are for the render only, at 800×600 with 8 threads and normal shading. For "without BVH", we changed <code>construct_bvh</code> so that the root is always a leaf that contains all the primitives.</p>
+		<div style="display: flex; flex-direction: column; align-items: center;">
+			<table style="border-collapse: collapse; text-align: center;">
+			  <tr>
+				<th style="padding: 4px 12px;">Scene</th>
+				<th style="padding: 4px 12px;">Triangles</th>
+				<th style="padding: 4px 12px;">Time without BVH</th>
+				<th style="padding: 4px 12px;">Time with BVH</th>
+				<th style="padding: 4px 12px;">Speedup</th>
+				<th style="padding: 4px 12px;">Tests per ray without BVH</th>
+				<th style="padding: 4px 12px;">Tests per ray with BVH</th>
+			  </tr>
+			  <tr><td>banana.dae</td><td>2,458</td><td>1.72 s</td><td>0.038 s</td><td>45×</td><td>107.0</td><td>1.75</td></tr>
+			  <tr><td>teapot.dae</td><td>2,464</td><td>5.79 s</td><td>0.056 s</td><td>103×</td><td>323.8</td><td>2.15</td></tr>
+			  <tr><td>beetle.dae</td><td>7,558</td><td>8.24 s</td><td>0.041 s</td><td>202×</td><td>376.0</td><td>1.53</td></tr>
+			  <tr><td>cow.dae</td><td>5,856</td><td>13.40 s</td><td>0.067 s</td><td>201×</td><td>564.8</td><td>2.53</td></tr>
+			</table>
+		</div>
+		<p>The BVH makes rendering 45 to 200 times faster on these scenes, and the reason is in the last two columns. Without a BVH, every ray that hits the bounding box of the mesh is tested against all its triangles. So the average number of tests per ray (107 to 565) depends on how many triangles there are and on how much of the image the mesh covers: the cow covers a large part of the image and has more triangles than the banana or the teapot, so it is the slowest. Rays that miss the box of the whole mesh cost only one box test, which is why these averages are lower than the triangle counts. With a BVH, a ray only goes down the few branches whose boxes it hits, and it is tested against only 1.5 to 2.5 triangles on average, whatever the size of the mesh. The cost of a ray changes from linear in the number of triangles to roughly logarithmic, so the speedup grows with the size of the mesh. This is what makes the large scenes above possible: CBlucy.dae renders in 0.08 s with 133,796 triangles, while without the BVH it would take tens of times longer than the cow, since the cost grows linearly. Building the tree is cheap (2–3 ms for these scenes, 0.09 s for CBlucy), so it pays for itself in the first fraction of a second of rendering.</p>
 
 		<h2>Part 3: Direct Illumination</h2>
 
@@ -405,16 +467,71 @@
 		<p>CBbunny.dae with <code>max_ray_depth = 5</code>. With 1 sample per pixel, each pixel follows only one random path, and the image is full of noise. Direct lighting already looks correct, because each hit uses 4 light rays, but indirect lighting, like on the ceiling, is very noisy. The noise decreases as \(1/\sqrt{N}\): 4 times more samples divide it by 2. So the image gets better quickly at first (1 to 16 samples), then slowly (64 to 1024 still removes visible noise on the ceiling and in the dark areas). At 1024 samples the image is almost free of noise, but it takes about 1024 times longer to render than the first one.</p>
 
 		<h2>Part 5: Adaptive Sampling</h2>
-		Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+
+		<h3>What adaptive sampling is</h3>
+		<p>In Part 4, every pixel used the same number of samples. But some pixels converge much faster than others. A pixel on a wall that sees the light directly gets almost the same value from every path, so a few samples are enough. A pixel on the ceiling or in a shadow only gets light from random indirect paths: most paths bring little light and a few bring a lot, so it needs many more samples to lose its noise. Adaptive sampling uses statistics to decide, for each pixel, when it has enough samples. It stops sampling the easy pixels early and keeps the full sample budget for the hard ones.</p>
+
+		<p>After \(n\) samples of a pixel, we look at their illuminances \(x_1, \dots, x_n\), with mean \(\mu\) and standard deviation \(\sigma\). The true value of the pixel is in the interval \(\mu \pm I\) with 95% confidence, where
+		\[ I = 1.96 \cdot \frac{\sigma}{\sqrt{n}} \]
+		\(I\) is small when the samples vary little or when there are many of them. We consider that the pixel has converged when
+		\[ I \le maxTolerance \cdot \mu \]
+		with <code>maxTolerance = 0.05</code>. So we stop when we are 95% sure that the mean is within 5% of the true value. The tolerance is relative to \(\mu\): an error of the same size is much easier to see in a dark pixel than in a bright one.</p>
+
+		<h3>Walk through our implementation</h3>
+		<p>Everything happens in <code>PathTracer::raytrace_pixel(x, y)</code>. The <code>-s</code> value (<code>ns_aa</code>) is now the <i>maximum</i> number of samples per pixel.</p>
+		<ol>
+			<li>We keep a running sum of the radiances (<code>col</code>), the number of samples \(n\), and two sums of illuminances: \(s_1 = \sum x_k\) and \(s_2 = \sum x_k^2\). With these two sums we never store the individual samples.</li>
+			<li>In a loop that runs while \(n\) is below <code>ns_aa</code>, we pick a random point in the pixel with <code>gridSampler</code>, normalize it by the image size, and generate a camera ray with <code>depth = max_ray_depth</code>. Then we call <code>est_radiance_global_illumination</code>, add the radiance to <code>col</code>, and add its illuminance \(x_k\) (<code>radiance.illum()</code>) to \(s_1\) and \(x_k^2\) to \(s_2\).</li>
+			<li>Computing the statistics after every sample would cost too much, so we only test convergence after each batch of <code>samplesPerBatch</code> samples (64 in our renders, set with <code>-a</code>). The mean and the variance are
+			\[ \mu = \frac{s_1}{n}, \qquad \sigma^2 = \frac{1}{n-1}\left(s_2 - \frac{s_1^2}{n}\right) \]
+			Because of floating-point rounding, \(\sigma^2\) can come out slightly negative when all the samples are almost equal, so we clamp it to 0.</li>
+			<li>We compute \(I = 1.96 \sqrt{\sigma^2 / n}\). If \(I \le maxTolerance \cdot \mu\), we stop sampling this pixel. Otherwise we continue with the next batch, up to <code>ns_aa</code> samples.</li>
+			<li>At the end, we write the real number of samples \(n\) to <code>sampleCountBuffer</code> (used for the sampling rate image) and the average radiance <code>col / n</code> to the pixel.</li>
+		</ol>
+		<p>One edge case: a pixel that sees nothing (\(\mu = 0\), \(\sigma = 0\)) passes the test after the first batch, because \(0 \le 0\). This is correct for the black background. But in very dark images, a pixel can also get 0 for its whole first batch by chance, and then it is wrongly marked as converged. This is why we used <code>-a 1024 0.05</code> for the \(m \ge 3\) images in Part 4.</p>
+
+		<h3>Results (2048 max samples per pixel, 1 sample per light, max ray depth 5)</h3>
+		<p>Both scenes were rendered with <code>-s 2048 -a 64 0.05 -l 1 -m 5 -r 480 360</code>. In the sampling rate images, red means that the pixel used a high number of samples (close to 2048), and blue means a low number of samples. The color shows the number of samples used, divided by 2048.</p>
+		<div style="display: flex; flex-direction: column; align-items: center;">
+			<table style="width: 100%; text-align: center; border-collapse: collapse;">
+			  <tr>
+				<td style="text-align: center;">
+				  <img src="assets/p5_bunny.png" style="width: 95%; max-width: 480px;"/>
+				  <figcaption>CBbunny.dae: rendered image</figcaption>
+				</td>
+				<td style="text-align: center;">
+				  <img src="assets/p5_bunny_rate.png" style="width: 95%; max-width: 480px;"/>
+				  <figcaption>CBbunny.dae: sampling rate</figcaption>
+				</td>
+			  </tr>
+			  <tr>
+				<td style="text-align: center;">
+				  <img src="assets/p5_spheres.png" style="width: 95%; max-width: 480px;"/>
+				  <figcaption>CBspheres_lambertian.dae: rendered image</figcaption>
+				</td>
+				<td style="text-align: center;">
+				  <img src="assets/p5_spheres_rate.png" style="width: 95%; max-width: 480px;"/>
+				  <figcaption>CBspheres_lambertian.dae: sampling rate</figcaption>
+				</td>
+			  </tr>
+			</table>
+		</div>
+		<p>Both rendered images are free of noise, even with only 1 sample per light. The sampling rate images show where the work went:</p>
+		<ul>
+			<li><b>Red (many samples):</b> the ceiling, the shadows on the floor under the bunny and the spheres, and the parts of the objects that face away from the light (the lower half of the bunny, the dark sides of the spheres). These points do not see the light directly, or only see part of it. They are lit mostly by indirect light, which is dark (small \(\mu\)) and varies a lot between paths (large \(\sigma\)), so \(I \le 0.05\,\mu\) needs many samples. The top corners of the ceiling, far from the light, are the hardest.</li>
+			<li><b>Green (medium):</b> the transition zones, like the edges of the shadows, the upper part of the back wall near the ceiling, and the parts of the objects that are lit at a grazing angle.</li>
+			<li><b>Blue (few samples):</b> the light itself, which always returns the same emission (\(\sigma = 0\)), so it stops after the first batch of 64. Also the black background, and the walls, the floor and the tops of the objects that face the light. With light sampling, these points get their bright direct light from almost every path, so the samples vary little compared to their mean.</li>
+		</ul>
+		<p>The difference in cost is large. Most of the image is blue, so most pixels use only a few hundred samples instead of 2048, and the time goes to the small regions that need it. The CBbunny render took about 2 minutes on our computer with 8 threads. With 2048 samples for every pixel, it would take several times longer and give no visible improvement on the walls.</p>
 
 		<h2>(Optional) Part 6: Extra Credit Opportunities</h2>
-		Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+		TODO
 		
 		<h2>Collaboration</h2>
 		<p>We split the work by parts: Grégoire implemented Parts 1, 3 and 4, and Arian implemented Parts 2 and 5.</p>
 
 		<h2>Acknowledgement of AI</h2>
-		<p>We mainly used AI (Grégoire used Claude Opus 5.5) to better understand the theory, the parts of the code that were already given, and the C++ syntax, and to help us debug our errors. We wrote all the lines of code ourselves. AI also helped us write this report in English.</p>
+		<p>We mainly used Claude Opus 5.5 to better understand the theory, the parts of the code that were already given, and the C++ syntax, and to help us debug our errors. We wrote all the lines of code ourselves.</p>
 		</div>
 	</body>
 </html>
