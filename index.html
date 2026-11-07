@@ -145,7 +145,7 @@
 		</div>
 
 		<h3>Rendering times with and without BVH acceleration</h3>
-		<p>All times are for the render only, at 800×600 with 8 threads and normal shading. For "without BVH", we changed <code>construct_bvh</code> so that the root is always a leaf that contains all the primitives.</p>
+		<p>All times are rendered at 800×600 with 8 threads and normal shading. "Without BVH" is our Part 1 code.</p>
 		<div style="display: flex; flex-direction: column; align-items: center;">
 			<table style="border-collapse: collapse; text-align: center;">
 			  <tr>
@@ -157,13 +157,13 @@
 				<th style="padding: 4px 12px;">Tests per ray without BVH</th>
 				<th style="padding: 4px 12px;">Tests per ray with BVH</th>
 			  </tr>
-			  <tr><td>banana.dae</td><td>2,458</td><td>1.72 s</td><td>0.038 s</td><td>45×</td><td>107.0</td><td>1.75</td></tr>
-			  <tr><td>teapot.dae</td><td>2,464</td><td>5.79 s</td><td>0.056 s</td><td>103×</td><td>323.8</td><td>2.15</td></tr>
-			  <tr><td>beetle.dae</td><td>7,558</td><td>8.24 s</td><td>0.041 s</td><td>202×</td><td>376.0</td><td>1.53</td></tr>
-			  <tr><td>cow.dae</td><td>5,856</td><td>13.40 s</td><td>0.067 s</td><td>201×</td><td>564.8</td><td>2.53</td></tr>
+			  <tr><td>banana.dae</td><td>2,458</td><td>6.68 s</td><td>0.038 s</td><td>176×</td><td>2,458</td><td>2.85</td></tr>
+			  <tr><td>teapot.dae</td><td>2,464</td><td>7.44 s</td><td>0.056 s</td><td>133×</td><td>2,464</td><td>2.59</td></tr>
+			  <tr><td>cow.dae</td><td>5,856</td><td>18.30 s</td><td>0.067 s</td><td>273×</td><td>5,856</td><td>3.41</td></tr>
+			  <tr><td>beetle.dae</td><td>7,558</td><td>23.96 s</td><td>0.041 s</td><td>584×</td><td>7,558</td><td>1.77</td></tr>
 			</table>
 		</div>
-		<p>The BVH makes rendering 45 to 200 times faster on these scenes, and the reason is in the last two columns. Without a BVH, every ray that hits the bounding box of the mesh is tested against all its triangles. So the average number of tests per ray (107 to 565) depends on how many triangles there are and on how much of the image the mesh covers: the cow covers a large part of the image and has more triangles than the banana or the teapot, so it is the slowest. Rays that miss the box of the whole mesh cost only one box test, which is why these averages are lower than the triangle counts. With a BVH, a ray only goes down the few branches whose boxes it hits, and it is tested against only 1.5 to 2.5 triangles on average, whatever the size of the mesh. The cost of a ray changes from linear in the number of triangles to roughly logarithmic, so the speedup grows with the size of the mesh. This is what makes the large scenes above possible: CBlucy.dae renders in 0.08 s with 133,796 triangles, while without the BVH it would take tens of times longer than the cow, since the cost grows linearly. Building the tree is cheap (2–3 ms for these scenes, 0.09 s for CBlucy), so it pays for itself in the first fraction of a second of rendering.</p>
+		<p>Without the BVH, render time grows with the number of triangles, since every ray has to check every triangle. The BVH makes rendering 133 to 584 times faster on these four scenes, and the last two columns explain why. Without a BVH, every ray is tested against every triangle of the scene, so the number of tests per ray is exactly the number of triangles, and the render time grows with it: the beetle has about 3 times more triangles than the banana and takes about 3.6 times longer (23.96 s against 6.68 s). With a BVH, a ray is only tested against the triangles in the few leaves whose boxes it hits, which is fewer than 4 triangles on average for every scene, even though the scenes have between 2,458 and 7,558 triangles. As a result, the render time with the BVH stays almost constant, between 0.04 s and 0.07 s, and no longer depends on the size of the mesh. This is also why the speedup grows with the number of triangles: 133× to 176× for the two smallest meshes, 273× for the cow and 584× for the beetle, the largest one.</p>
 
 		<h2>Part 3: Direct Illumination</h2>
 
