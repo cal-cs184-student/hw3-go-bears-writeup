@@ -516,9 +516,9 @@
 		</div>
 		<p>Both rendered images are free of noise, even with only 1 sample per light. The sampling rate images show where the work went:</p>
 		<ul>
-			<li><b>Red (many samples):</b> the ceiling, the shadows on the floor under the bunny and the spheres, and the parts of the objects that face away from the light (the lower half of the bunny, the dark sides of the spheres). These points do not see the light directly, or only see part of it. The top corners of the ceiling, far from the light, are the hardest.</li>
-			<li><b>Green (medium):</b> the transition zones, like the edges of the shadows, the upper part of the back wall near the ceiling, and the parts of the objects that are lit at a grazing angle.</li>
-			<li><b>Blue (few samples):</b> the light itself, which always returns the same emission (\(\sigma = 0\)), so it stops after the first batch of 64. Also the black background, and the walls, the floor and the tops of the objects that face the light. With light sampling, these points get their bright direct light from almost every path, so the samples vary little compared to their mean.</li>
+			<li><b>Red:</b> the ceiling, the shadows on the floor under the bunny and the spheres, and the parts of the objects that face away from the light (the lower half of the bunny, the dark sides of the spheres). These points do not see the light directly, or only see part of it. The top corners of the ceiling, far from the light, are the hardest.</li>
+			<li><b>Green:</b> the transition zones, like the edges of the shadows, the upper part of the back wall near the ceiling, and the parts of the objects that are lit at a grazing angle.</li>
+			<li><b>Blue:</b> the light itself, which always returns the same emission. Also the walls, the floor and the tops of the objects that face the light. With light sampling, these points get their bright direct light from almost every path, so the samples vary little compared to their mean.</li>
 		</ul>
 		The final renders are essentially noise-free, with smooth shadows and color bleeding from the red and blue walls, while most of the image used far fewer than 2048 samples.
 		
